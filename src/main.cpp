@@ -129,6 +129,10 @@ struct GameState
 	FontAsset	defaultFont;
 };
 
+void MenuState(SDL_GameController* controller1, GameState& state);
+void PlayState(SDL_GameController* controller1, GameState& state);
+void VictoryState(SDL_GameController* controller1, GameState& state);
+
 void LoadFont(GameState& state)
 {
 	long size;
@@ -161,13 +165,13 @@ void LoadFont(GameState& state)
 		unsigned char R, G, B, A;
 	};
 
-	char characters[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	const char characters[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_ ";
 
 	for(size_t I = 0; I < sizeof(characters); I++)
 	{
 		char c = characters[I];
 
-		auto fontBitmap = stbtt_GetCodepointBitmap(&font, 0,stbtt_ScaleForPixelHeight(&font, 64), c, &b_w, &b_h, 0, &baseline);
+		auto fontBitmap = stbtt_GetCodepointBitmap(&font, 0, stbtt_ScaleForPixelHeight(&font, 64), c, &b_w, &b_h, 0, &baseline);
 		RGBA* bitmap = (RGBA*)malloc(sizeof(RGBA) * b_w * b_h);
 
 		for (size_t I = 0; I < b_w * b_h; I++)
@@ -297,20 +301,37 @@ void PlayState(SDL_GameController* controller1, GameState& state)
 			fallingBlocks.end());
 
 		
-		auto intersection_end = std::remove_if(blocks.begin(), blocks.end(), 
+		auto intersection_begin = std::remove_if(blocks.begin(), blocks.end(), 
 									[&](Rect& block) -> bool
 									{ 
 											return RectangleCircleIntersection(block, Circle{ ballX, ballY, 50.0f });  
 									});
 
 		
-		for (auto I = intersection_end; I < blocks.end(); I++)
+		for (auto I = intersection_begin; I < blocks.end(); I++)
 		{
 			ballX_V *= 1.05f;
 			ballY_V *= 1.05f;
 		}
 
-		blocks.erase(intersection_end, blocks.end());
+		if(std::distance(intersection_begin, blocks.end()) > 0)
+		{
+			auto I = intersection_begin;
+			float d = 0;
+			for(; I < blocks.end(); I++)
+			{
+				d = std::max(Distance(I->x, I->y, ballX, ballY), d);
+			}
+
+			const float diffX = abs( ballX - I->x ) - I->w / 2.0f;
+			const float diffY = abs( ballY - I->y ) - I->h / 2.0f;
+
+			if(diffX > diffY)
+				ballX_V *= -1.0f;
+			else
+				ballY_V *= -1.0f;
+		}
+		blocks.erase(intersection_begin, blocks.end());
 
 		SDL_SetRenderDrawColor(gRenderer, 0x8B, 0X7E, 0X74, 255);
 
@@ -354,11 +375,12 @@ void PlayState(SDL_GameController* controller1, GameState& state)
 	}
 
 	if(blocks.size())
-		printf("Player Lost!\n");
+	{
+		state.mode = GameMode::Menu;
+		return;
+	}
 	else
-		printf("Player Win!\n");
-
-	state.mode = Victory;
+		VictoryState(controller1, state);
 }
 
 template<typename TY>
@@ -428,12 +450,12 @@ void MenuState(SDL_GameController* controller1, GameState& state)
 		if(up_Button && !up_Button_prev)
 		{
 			printf("Up_Button down \n");
-			menuSelection = Clamp(0, menuSelection + 1, 1);
+			menuSelection = Clamp(0, menuSelection - 1, 1);
 		}
 		if(down_Button && !down_Button_prev)
 		{
 			printf("Down_Button down \n");
-			menuSelection = Clamp(0, menuSelection - 1, 1);
+			menuSelection = Clamp(0, menuSelection + 1, 1);
 		}
 
 		up_Button_prev = up_Button;
@@ -460,6 +482,29 @@ void MenuState(SDL_GameController* controller1, GameState& state)
 
 void VictoryState(SDL_GameController* controller1, GameState& state)
 {
+	while (true)
+	{
+		SDL_SetRenderDrawColor(gRenderer, 0, 0, 0, 255);
+		SDL_RenderClear(gRenderer);
+
+		for (SDL_Event event; SDL_PollEvent(&event););
+
+		const int buttonWidth 	= SCREEN_WIDTH / 5;
+		const int buttonHeight 	= 100;
+		
+		DrawButton(
+			SCREEN_WIDTH / 2 - 150 / 2, SCREEN_HEIGHT / 5 * 1, buttonWidth, buttonHeight, "Player Wins", 
+			{ 0x00, 0x00, 0x00, 0x00 }, state.defaultFont);
+
+		SDL_RenderPresent(gRenderer);
+
+		const bool x_Button	= SDL_GameControllerGetButton(controller1, SDL_CONTROLLER_BUTTON_A) != 0;
+		if(x_Button)
+		{
+			state.mode = GameMode::Menu;
+			return;
+		}
+	}
 }
 
 
